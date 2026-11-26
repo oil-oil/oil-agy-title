@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from usage_ledger import record_attempt
@@ -56,6 +57,7 @@ def find_agy(explicit: str | None = None) -> str:
         raise BackendError(f"配置的 agy 可执行文件不可用：{explicit}")
     candidates = [
         shutil.which("agy"),
+        str(Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe"),
         str(Path.home() / ".local" / "bin" / "agy"),
         "/usr/local/bin/agy",
         "/opt/homebrew/bin/agy",
@@ -188,7 +190,8 @@ class AntigravityBackend:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(req, timeout=self.timeout) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 return json.loads(raw) if raw.strip() else {}
         except urllib.error.HTTPError as exc:
@@ -229,7 +232,19 @@ class AntigravityBackend:
         try:
             parsed = json.loads(row[1] or "[]")
             if isinstance(parsed, list):
-                workspaces = [str(x).replace("file://", "") for x in parsed if isinstance(x, str)]
+                for item in parsed:
+                    if not isinstance(item, str):
+                        continue
+                    if item.startswith("file://"):
+                        u = urllib.parse.urlparse(item)
+                        p = urllib.parse.unquote(u.path or "")
+                        if u.netloc and u.netloc not in ("", "localhost"):
+                            p = f"//{u.netloc}{p}"
+                        elif re.match(r"^/[A-Za-z]:[\\/]", p):
+                            p = p[1:]
+                        workspaces.append(p)
+                    else:
+                        workspaces.append(item)
         except ValueError:
             pass
         return {
@@ -448,7 +463,8 @@ def _call_agy_model(root: Path, conversation_id: str, config: dict, context: dic
     attempt = record_attempt(root, "naming", conversation_id, config)
     usage: dict = {}
     status = "interrupted"
-    with tempfile.TemporaryDirectory(prefix="oil-agy-title-") as tmp:
+    tmp = tempfile.mkdtemp(prefix="oil-agy-title-")
+    try:
         args = [
             binary,
             "-p", prompt,
@@ -458,16 +474,18 @@ def _call_agy_model(root: Path, conversation_id: str, config: dict, context: dic
             "--output-format", "json",
             "--print-timeout", f"{max(5, int(remaining))}s",
         ]
+        run_kwargs: dict = {
+            "cwd": tmp,
+            "capture_output": True,
+            "text": True,
+            "encoding": "utf-8",
+            "env": _worker_env(),
+            "timeout": max(10.0, remaining + 5.0),
+        }
+        if sys.platform == "win32":
+            run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
-            proc = subprocess.run(
-                args,
-                cwd=tmp,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                env=_worker_env(),
-                timeout=max(10.0, remaining + 5.0),
-            )
+            proc = subprocess.run(args, **run_kwargs)
             raw_out = (proc.stdout or "").strip()
             envelope = _extract_json_object(raw_out) if raw_out else {}
             if isinstance(envelope.get("usage"), dict):
@@ -488,6 +506,8 @@ def _call_agy_model(root: Path, conversation_id: str, config: dict, context: dic
             raise
         finally:
             attempt.finish(status, usage)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _generate_once(root: Path, conversation_id: str, config: dict, context: dict,

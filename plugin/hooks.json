@@ -3,7 +3,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" ./scripts/oil_agy_title.py hook; done",
+        "command": "/opt/homebrew/bin/python3 ./scripts/oil_agy_title.py hook || /usr/local/bin/python3 ./scripts/oil_agy_title.py hook || python3 ./scripts/oil_agy_title.py hook || python ./scripts/oil_agy_title.py hook || py -3 ./scripts/oil_agy_title.py hook",
         "timeout": 10
       }
     ]

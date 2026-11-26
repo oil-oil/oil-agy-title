@@ -2,7 +2,7 @@
 name: oil-agy-title
 description: 管理 Antigravity 桌面端会话的后台自动命名：检查运行状态与 Hook、预览或应用会话标题、固定/解锁标题、暂停/恢复自动命名、查看模型用量与切换内置模型。当用户要求管理 Antigravity 桌面端会话标题或配置本插件时使用；不用于文章标题、视频标题或文件重命名，也不在普通对话结束时由主 Agent 主动调用。
 license: MIT
-compatibility: Antigravity 桌面端专用；需要 Python 3.9+ 与已登录的 agy CLI。macOS 已实测；Linux 仅代码兼容未实测桌面端；Windows 暂不支持当前 POSIX hooks.json 入口。
+compatibility: Antigravity 桌面端专用；需要 Python 3.9+ 与已登录的 agy CLI。macOS 与 Windows 11 已实测；Linux 代码兼容、桌面端未实测。Windows 上若 `python3` 指向商店占位符请改用 `python`。
 metadata:
   version: "0.1.0"
 ---

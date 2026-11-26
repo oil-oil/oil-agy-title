@@ -539,20 +539,32 @@ def dispatch_hook(root: Path, config: dict) -> None:
     }
     child_env = os.environ.copy()
     child_env["OIL_AGY_TITLE_WORKER"] = "1"
+    popen_kwargs: dict = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+        "env": child_env,
+    }
+    if sys.platform == "win32":
+        popen_kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
+    else:
+        popen_kwargs["start_new_session"] = True
     subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "worker", "--payload-json", json.dumps(payload, ensure_ascii=False)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        close_fds=True,
-        env=child_env,
+        **popen_kwargs,
     )
 
 
 def doctor(backend: AntigravityBackend, root: Path, config: dict, conversation_id: str | None = None) -> dict:
     binary = find_agy(config.get("agy_bin"))
-    ver = subprocess.run([binary, "--help"], capture_output=True, text=True, encoding="utf-8", timeout=10)
+    run_kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "timeout": 10}
+    if sys.platform == "win32":
+        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    ver = subprocess.run([binary, "--help"], **run_kwargs)
     output: dict = {
         "python": sys.version.split()[0],
         "plugin_root": str(PLUGIN_ROOT),

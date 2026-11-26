@@ -137,9 +137,54 @@ class OilAgyTitleTests(unittest.TestCase):
         self.assertTrue(oil_agy_title.is_desktop_hook_event({
             "transcriptPath": "/Users/a/.gemini/antigravity/brain/123/.system_generated/logs/transcript.jsonl"
         }))
+        self.assertTrue(oil_agy_title.is_desktop_hook_event({
+            "transcriptPath": r"C:\Users\a\.gemini\antigravity\brain\123\.system_generated\logs\transcript.jsonl"
+        }))
         self.assertFalse(oil_agy_title.is_desktop_hook_event({
             "transcriptPath": "/Users/a/.gemini/antigravity-cli/brain/123/.system_generated/logs/transcript.jsonl"
         }))
+
+    def test_db_meta_decodes_windows_and_posix_workspace_uris(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp)
+            db_path = app_dir / "conversation_summaries.db"
+            cid = "33333333-4444-4555-8666-777777777777"
+            conn = sqlite3.connect(str(db_path))
+            conn.execute(
+                "CREATE TABLE conversation_summaries "
+                "(conversation_id TEXT, title TEXT, workspace_uris TEXT, project_id TEXT, parent_conversation_id TEXT, nesting_depth INTEGER)"
+            )
+            conn.execute(
+                "INSERT INTO conversation_summaries VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    cid,
+                    "Test",
+                    json.dumps([
+                        "file:///f%3A/Antigravity%20CLI/antigravity/%E9%A1%B9%E7%9B%AE%E6%B5%8B%E8%AF%95",
+                        "file:///Users/demo/my-project",
+                    ]),
+                    "proj-win",
+                    "",
+                    0,
+                ),
+            )
+            conn.commit()
+            conn.close()
+            meta = agy_adapter.AntigravityBackend(data_root=app_dir)._read_db_meta(cid)
+            self.assertEqual(meta["workspaces"], [
+                "f:/Antigravity CLI/antigravity/项目测试",
+                "/Users/demo/my-project",
+            ])
+            self.assertEqual(oil_agy_title.project_hint({"cwd": meta["workspaces"][0]}), "项目测试")
+
+    def test_hooks_json_uses_cross_platform_fallback_command(self):
+        hooks_path = Path(__file__).resolve().parents[1] / "hooks.json"
+        data = json.loads(hooks_path.read_text(encoding="utf-8"))
+        cmd = data["oil-agy-title"]["Stop"][0]["command"]
+        self.assertIn("./scripts/oil_agy_title.py hook", cmd)
+        self.assertNotIn("for p in", cmd)
+        self.assertIn("python ./scripts/oil_agy_title.py hook", cmd)
 
     def test_same_user_turn_hook_skips_repeat_model_call(self):
         cid = "22222222-3333-4444-8555-666666666666"
